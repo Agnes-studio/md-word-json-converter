@@ -2,6 +2,12 @@
 
 一个**单文件、纯离线**的格式互转小工具：Markdown、Word (.docx)、JSON 三种格式互相转换。整个工具就是一个 HTML 文件，双击就能用，不联网、不上传、不装任何东西。
 
+## 📥 下载
+
+**👉 [点我直接下载（ZIP，解压后双击 index.html 即可使用）](https://github.com/Agnes-studio/md-word-json-converter/archive/refs/heads/main.zip)**
+
+只要单个 HTML 文件？打开 [index.html](https://github.com/Agnes-studio/md-word-json-converter/blob/main/index.html)，点页面**右上角的下载按钮**（⬇ Download raw file）即可。
+
 ## ✨ 特点
 
 - **完全离线**：所有转换都在浏览器本地完成，文件不会离开你的电脑
@@ -13,7 +19,7 @@
 
 ## 🚀 使用方法
 
-1. 下载本仓库的 [`index.html`](index.html)（Code → Download ZIP，或点进文件后点 Raw 右键另存为）
+1. 用上面「📥 下载」里的链接拿到 `index.html`
 2. 双击用浏览器打开（推荐新版 Edge / Chrome）
 3. 左边选原始格式，右边选目标格式，把文件拖进来，点「开始转换」
 
