@@ -764,6 +764,15 @@ function buildFiles(items,srcBase,tag){
 function jsonToMdFiles(text,fileName){
   var t=String(text).replace(/^﻿/,'').trim(),d=null;
   try{d=JSON.parse(t);}catch(e){d=null;}
+  var srcBase=(fileName||'export').replace(/\.[^.]+$/,'')||'export';
+  // 本工具生成的结构化文档 JSON → 无损还原成 MD
+  if(isDocJson(d)){
+    return {files:[{name:safeName(srcBase)+'.md',content:blocksToMd(d.blocks)}],items:1,srcBase:safeName(srcBase)};
+  }
+  if(Array.isArray(d)&&d.length&&d.every(isDocJson)){
+    var uniqD=uniqNamer();
+    return {files:d.map(function(o,i){return {name:uniqD(safeName(srcBase+'-'+(i+1)))+'.md',content:blocksToMd(o.blocks)};}),items:d.length,srcBase:safeName(srcBase)};
+  }
   var items;
   if(d===null){
     items=t.split('\n').reduce(function(acc,l){l=l.trim();if(!l)return acc;try{acc.push(JSON.parse(l));}catch(_){}return acc;},[]);
@@ -772,11 +781,72 @@ function jsonToMdFiles(text,fileName){
     if(!d.length)throw new Error(fileName+' 是空数组，没有条目可转。');
     items=d;
   }else items=[d];
-  var srcBase=(fileName||'export').replace(/\.[^.]+$/,'')||'export';
   var tag=srcBase.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
   if(!tag||/^[0-9-]+$/.test(tag))tag='export';
   var r=buildFiles(items,srcBase,tag);
   return {files:r.files,items:r.items,srcBase:safeName(srcBase)};
+}
+
+/* ══════════════════ 4.5 结构 → Markdown（blocks 渲染，用于 MD/Word → JSON 及 JSON 无损还原） ══════════════════ */
+function isDocJson(o){return o!==null&&typeof o==='object'&&!Array.isArray(o)&&o.format==='mdwx-document'&&Array.isArray(o.blocks);}
+function runsToMd(inl){
+  return (inl||[]).map(function(r){
+    var t=String(r.text||'');
+    var lead=t.match(/^\s*/)[0];
+    if(lead.length===t.length)return t;
+    var trail=t.match(/\s*$/)[0],core=t.slice(lead.length,t.length-trail.length);
+    if(r.code)core='`'+core.replace(/`/g,'ˋ')+'`';
+    else{
+      if(r.b&&r.i)core='***'+core+'***';
+      else if(r.b)core='**'+core+'**';
+      else if(r.i)core='*'+core+'*';
+      if(r.strike)core='~~'+core+'~~';
+    }
+    if(r.link)core='['+core+']('+r.link+')';
+    return lead+core+trail;
+  }).join('');
+}
+function cellMd(inl){return runsToMd(inl).replace(/\|/g,'\\|').replace(/\n/g,'<br>');}
+function listToMd(list,depth){
+  var pad='  '.repeat(Math.min(depth,8)),lines=[],n=0;
+  (list.items||[]).forEach(function(it){
+    n++;
+    var marker=list.ordered?(n+'. '):'- ';
+    var text=runsToMd(it.inl);
+    if(it.task!==null&&it.task!==undefined)text='['+(it.task?'x':' ')+'] '+text;
+    lines.push(pad+marker+text.replace(/\n/g,'\n'+pad+'  '));
+    (it.children||[]).forEach(function(ch){lines.push(listToMd(ch,depth+1));});
+  });
+  return lines.join('\n');
+}
+function blocksToMd(blocks){
+  var out=[];
+  (blocks||[]).forEach(function(b){
+    switch(b.t){
+      case 'front':
+        out.push('---\n'+b.pairs.map(function(kv){return kv[0]?kv[0]+': '+kv[1]:kv[1];}).join('\n')+'\n---');break;
+      case 'h':out.push('#'.repeat(Math.min(b.level,6))+' '+runsToMd(b.inl));break;
+      case 'p':out.push(runsToMd(b.inl));break;
+      case 'hr':out.push('---');break;
+      case 'code':out.push('```'+(b.lang||'')+'\n'+(b.lines||[]).join('\n')+'\n```');break;
+      case 'quote':
+        var lines=[];
+        if(b.callout)lines.push('> [!'+b.callout.type+']'+(b.callout.title?' '+b.callout.title:''));
+        blocksToMd(b.blocks).replace(/\n+$/,'').split('\n').forEach(function(l){lines.push(l?'> '+l:'>');});
+        out.push(lines.join('\n'));break;
+      case 'list':out.push(listToMd(b,0));break;
+      case 'table':
+        var aligns=b.aligns||[],header=b.header||[];
+        var head='| '+header.map(cellMd).join(' | ')+' |';
+        var sep='| '+header.map(function(_,i){
+          var a=aligns[i]||'';
+          return a==='center'?':---:':(a==='right'?'---:':(a==='left'?':---':'---'));
+        }).join(' | ')+' |';
+        var rows=(b.rows||[]).map(function(r){return '| '+r.map(cellMd).join(' | ')+' |';});
+        out.push([head,sep].concat(rows).join('\n'));break;
+    }
+  });
+  return out.join('\n\n')+(out.length?'\n':'');
 }
 
 /* ══════════════════ 5. 纯 JS ZIP（store + CRC32） ══════════════════ */
@@ -815,7 +885,7 @@ function makeZip(items){
 /* ══════════════════ 6. 界面交互 ══════════════════ */
 var INPUT=[];
 var FMT={md:{label:'Markdown (.md)'},docx:{label:'Word (.docx)'},json:{label:'JSON (.json)'}};
-var TARGETS={md:['docx'],docx:['md'],json:['md','docx']};
+var TARGETS={md:['docx','json'],docx:['md','json'],json:['md','docx']};
 var SRC='md',DST='docx';
 function show(msg,bad){var m=$('msg');m.textContent=msg;m.className=bad?'bad':'';}
 function baseName(n){return n.replace(/\.[^.]+$/,'');}
@@ -883,9 +953,11 @@ function refresh(){
   }
 }
 function noteFor(src,dst){
-  if(src==='md')return 'MD → Word：标题/加粗/斜体/列表/表格/代码块/引用/链接都会保留；网络图片以链接形式出现（离线工具不下载图片）。';
-  if(src==='docx')return 'Word → MD：只支持 .docx；文档里的图片不会带入 MD（会标记〔图片〕）。老 .doc 请先用 Word 另存为 .docx。';
-  return dst==='docx'?'JSON → Word：数组里每一条 = 一个 .docx（不生成 Obsidian 索引页）。':'JSON → MD：数组里每一条 = 一篇，多条时附带 Dataview 索引（Obsidian 用）。';
+  if(src==='md'&&dst==='docx')return 'MD → Word：标题/加粗/斜体/列表/表格/代码块/引用/链接都会保留；网络图片以链接形式出现（离线工具不下载图片）。';
+  if(src==='md'&&dst==='json')return 'MD → JSON：把文档解析成结构化数据（标题/列表/表格/代码块都变成字段），这种 JSON 还能无损转回 MD 或 Word。';
+  if(src==='docx'&&dst==='md')return 'Word → MD：只支持 .docx；文档里的图片不会带入 MD（会标记〔图片〕）。老 .doc 请先用 Word 另存为 .docx。';
+  if(src==='docx'&&dst==='json')return 'Word → JSON：先按 Word → MD 的规则解析，再导出结构化 JSON（图片会标记〔图片〕）。这种 JSON 可再转回 MD / Word。';
+  return dst==='docx'?'JSON → Word：本工具生成的结构化 JSON 可无损还原成 Word；Claude 对话导出等普通 JSON 则每条 = 一个 .docx。':'JSON → MD：本工具生成的结构化 JSON 可无损还原成 MD；Claude 对话导出等普通 JSON 则每条 = 一篇，多条附 Dataview 索引（Obsidian 用）。';
 }
 function closeMenus(except){
   var ms=document.querySelectorAll('.menu.open');
@@ -916,8 +988,8 @@ $('btn-go').addEventListener('click',function(){
   if(!files.length){show('还没有 '+FMT[SRC].label+' 文件：先把文件拖进上面的虚线框。',true);return;}
   var btn=$('btn-go');btn.disabled=true;
   var run;
-  if(SRC==='md')run=function(){return convMdToDocx(files);};
-  else if(SRC==='docx')run=function(){return convDocxToMd(files);};
+  if(SRC==='md')run=function(){return DST==='json'?convMdToJson(files):convMdToDocx(files);};
+  else if(SRC==='docx')run=function(){return DST==='json'?convDocxToJson(files):convDocxToMd(files);};
   else run=function(){return convJson(files,DST);};
   Promise.resolve().then(run).catch(function(err){show('转换出错：'+(err&&err.message||err),true);}).then(function(){btn.disabled=false;});
 });
@@ -935,7 +1007,7 @@ function download(outs,zipBase){
   if(!outs.length){show('没有可下载的结果',true);return;}
   if(outs.length===1){
     var o=outs[0];
-    var blob=o.u8?new Blob([o.u8],{type:o.mime||'application/octet-stream'}):new Blob([o.text],{type:'text/markdown;charset=utf-8'});
+    var blob=o.u8?new Blob([o.u8],{type:o.mime||'application/octet-stream'}):new Blob([o.text],{type:o.mime||'text/markdown;charset=utf-8'});
     trigger(blob,o.name);
     show('已下载 '+o.name);
   }else{
@@ -958,6 +1030,26 @@ function convMdToDocx(mds){
     outs.push({name:uniq(safeName(baseName(f.name))+'.docx'),u8:mdToDocxBytes(f.text),mime:DOCX_MIME});
   });
   download(outs,mds.length===1?baseName(mds[0].name):'MD转Word');
+}
+function convMdToJson(mds){
+  var uniq=uniqNamer(),outs=[];
+  mds.forEach(function(f){
+    var doc={format:'mdwx-document',version:1,source:'markdown',blocks:parseMd(f.text)};
+    outs.push({name:uniq(safeName(baseName(f.name))+'.json'),text:JSON.stringify(doc,null,2),mime:'application/json'});
+  });
+  download(outs,mds.length===1?baseName(mds[0].name):'MD转JSON');
+}
+async function convDocxToJson(docs){
+  var uniq=uniqNamer(),outs=[],errs=[];
+  for(var i=0;i<docs.length;i++){
+    try{
+      var md=await docxToMd(docs[i].buf);
+      var doc={format:'mdwx-document',version:1,source:'docx',blocks:parseMd(md)};
+      outs.push({name:uniq(safeName(baseName(docs[i].name))+'.json'),text:JSON.stringify(doc,null,2),mime:'application/json'});
+    }catch(e){errs.push(docs[i].name+'：'+(e&&e.message||e));}
+  }
+  download(outs,docs.length===1?baseName(docs[0].name):'Word转JSON');
+  if(errs.length)show('部分文件转换失败：\n'+errs.join('\n'),true);
 }
 async function convDocxToMd(docs){
   var uniq=uniqNamer(),outs=[],errs=[];
@@ -994,7 +1086,7 @@ drop.addEventListener('dragleave',function(){drop.classList.remove('over');});
 drop.addEventListener('drop',function(e){e.preventDefault();drop.classList.remove('over');if(e.dataTransfer&&e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
 
 // 暴露内部函数，便于自动化测试（不影响正常使用）
-window.MDWX={parseMd:parseMd,mdToDocxBytes:mdToDocxBytes,mdToDocxParts:mdToDocxParts,docxToMd:docxToMd,unzip:unzip,jsonToMdFiles:jsonToMdFiles,makeZip:makeZip};
+window.MDWX={parseMd:parseMd,mdToDocxBytes:mdToDocxBytes,mdToDocxParts:mdToDocxParts,docxToMd:docxToMd,unzip:unzip,jsonToMdFiles:jsonToMdFiles,makeZip:makeZip,blocksToMd:blocksToMd,isDocJson:isDocJson};
 
 var rd=$('ready');rd.textContent='✅ 工具已就绪：拖入或点击上方选择文件（.md / .docx / .json）';rd.className='on';
 })();
