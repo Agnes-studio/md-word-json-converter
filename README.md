@@ -57,6 +57,13 @@ node test_roundtrip.js
 
 覆盖：MD ⇄ JSON 往返一致性、结构化 JSON 识别、docx 生成、Claude 对话导出兼容等 9 项。
 
+## ☕ 支持我
+
+如果这个工具帮到了你，可以请我喝杯咖啡（金额不限），谢谢！
+
+- ⚡ [爱发电 Afdian](https://afdian.com/a/Agnesxie)（微信 / 支付宝）
+- ☕ [Ko-fi](https://ko-fi.com/agnesxie)（Credit card / PayPal）
+
 ## 📄 License
 
 [MIT](LICENSE)
