@@ -41,7 +41,7 @@ A native Android port of the web tool: same conversion engine, fully offline, no
 
 ### 📥 下载 / Download
 
-**👉 [下载 APK（v1.0.0）](https://github.com/Agnes-studio/md-word-json-converter/raw/main/downloads/MD-Word-JSON-v1.0.0.apk)**
+**👉 [下载 APK（v1.0.0）](https://github.com/Agnes-studio/md-word-json-converter/releases/latest)**
 
 传到手机上点开即可安装（需允许「安装未知来源应用」）。
 Transfer the APK to your phone and tap to install (you'll need to allow "install from unknown sources").
